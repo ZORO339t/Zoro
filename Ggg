@@ -1,0 +1,261 @@
+-- تحميل جدول الترجمات من رابط خارجي
+local function loadTranslations()
+    local success, translations = pcall(function()
+        return loadstring(game:HttpGet("https://raw.githubusercontent.com/Hussein239/Hussein239/refs/heads/main/29999"))()
+    end)
+    if success and type(translations) == "table" then
+        return translations
+    else
+        warn("Failed to load translations. Please check the URL or content.")
+        return {}
+    end
+end
+
+local translations = loadTranslations()
+
+-- ذاكرة تخزين مؤقت للترجمات
+local translationCache = {}
+
+-- دالة لترجمة النصوص
+local function translateText(originalText)
+    if translationCache[originalText] then
+        return translationCache[originalText]
+    end
+    local translatedText = translations[originalText] or originalText
+    translationCache[originalText] = translatedText
+    return translatedText
+end
+
+-- دالة لمراقبة النصوص وتحديثها عند التغيير
+local function monitorTextChange(object)
+    if object:IsA("TextLabel") or object:IsA("TextButton") or object:IsA("TextBox") then
+        -- ترجمة النص الحالي فوراً
+        task.spawn(function()
+            object.Text = translateText(object.Text)
+        end)
+        
+        -- مراقبة تغييرات النص
+        object:GetPropertyChangedSignal("Text"):Connect(function()
+            task.spawn(function()
+                local translated = translateText(object.Text)
+                if object.Text ~= translated then
+                    object.Text = translated
+                end
+            end)
+        end)
+    end
+end
+
+-- دالة لمراقبة جميع الكائنات داخل عنصر معين
+local function monitorObjectsInContainer(container)
+    for _, object in ipairs(container:GetDescendants()) do
+        monitorTextChange(object)
+    end
+
+    -- مراقبة الكائنات الجديدة عند إضافتها
+    container.DescendantAdded:Connect(function(object)
+        monitorTextChange(object)
+    end)
+end
+
+-- دالة لمراقبة واجهة المستخدم لكل لاعب
+local function monitorPlayerGui(player)
+    local playerGui = player:FindFirstChild("PlayerGui")
+    if playerGui then
+        monitorObjectsInContainer(playerGui)
+    end
+
+    -- مراقبة إضافة PlayerGui لاحقاً
+    player.ChildAdded:Connect(function(child)
+        if child.Name == "PlayerGui" then
+            monitorObjectsInContainer(child)
+        end
+    end)
+end
+
+-- دالة لمراقبة جميع اللاعبين الحاليين والجدد
+local function monitorAllPlayers()
+    for _, player in ipairs(game.Players:GetPlayers()) do
+        monitorPlayerGui(player)
+    end
+
+    -- مراقبة اللاعبين الجدد
+    game.Players.PlayerAdded:Connect(function(player)
+        monitorPlayerGui(player)
+    end)
+end
+
+-- إعدادات الإشعارات
+local notificationSettings = {
+    Font = Enum.Font.GothamBold,
+    TextSize = 28,
+    BackgroundColor = Color3.new(0, 0, 0),
+    TextColor = Color3.new(1, 1, 1),
+    TransparencySpeed = 1, -- سرعة التلاشي
+}
+
+-- دالة لإظهار الإشعارات
+local notificationLabel
+local function showNotification(message, duration)
+    if not notificationLabel then
+        local playerGui = game.Players.LocalPlayer:WaitForChild("PlayerGui")
+        local screenGui = Instance.new("ScreenGui", playerGui)
+        screenGui.Name = "Notification"
+        
+        notificationLabel = Instance.new("TextLabel", screenGui)
+        notificationLabel.Size = UDim2.new(0, 400, 0, 50)
+        notificationLabel.Position = UDim2.new(0.5, -200, 0, 10)
+        notificationLabel.BackgroundColor3 = notificationSettings.BackgroundColor
+        notificationLabel.BackgroundTransparency = 0.7
+        notificationLabel.TextColor3 = notificationSettings.TextColor
+        notificationLabel.Font = notificationSettings.Font
+        notificationLabel.TextSize = notificationSettings.TextSize
+    end
+
+    notificationLabel.Text = message
+    notificationLabel.TextTransparency = 0
+    notificationLabel.BackgroundTransparency = 0.7
+
+    -- إخفاء الإشعار بعد مدة محددة
+    task.delay(duration, function()
+        local tween = game.TweenService:Create(notificationLabel, TweenInfo.new(notificationSettings.TransparencySpeed), {
+            TextTransparency = 1,
+            BackgroundTransparency = 1,
+        })
+        tween:Play()
+    end)
+end
+
+-- دالة لإظهار الإشعار الأول عند بدء التشغيل
+local function showStartNotification()
+    showNotification("تم تشغيل الترجمة بنجاح", 3)
+end
+
+-- دالة لإظهار الإشعار الثاني بشكل دوري
+local function showDeveloperNotification()
+    while task.wait(1200) do -- 1200 ثانية = 20 دقيقة
+        showNotification("مطور السكربت / @BH_D1", 6)
+    end
+end
+
+-- وظيفة لتحديث الترجمات من المصدر الخارجي
+local function refreshTranslations()
+    while task.wait(3600) do -- تحديث كل ساعة
+        local newTranslations = loadTranslations()
+        if next(newTranslations) ~= nil then
+            translations = newTranslations
+            translationCache = {} -- تنظيف الذاكرة المؤقتة
+            warn("Translations updated successfully.")
+        else
+            warn("Failed to refresh translations.")
+        end
+    end
+end
+
+-- إنشاء واجهة المستخدم
+local player = game.Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+local screenGui = Instance.new("ScreenGui", playerGui)
+screenGui.Name = "MainUI"
+
+-- إنشاء الإطار الرئيسي للقائمة
+local mainFrame = Instance.new("Frame", screenGui)
+mainFrame.Size = UDim2.new(0, 300, 0, 400)
+mainFrame.Position = UDim2.new(0.5, -150, 0.5, -200) -- في وسط الشاشة
+mainFrame.BackgroundColor3 = Color3.new(0.2, 0.2, 0.2)
+mainFrame.BorderSizePixel = 0
+mainFrame.ClipsDescendants = true
+
+-- إضافة زاوية مستديرة للإطار
+local corner = Instance.new("UICorner", mainFrame)
+corner.CornerRadius = UDim.new(0, 8)
+
+-- إضافة ظل للإطار
+local shadow = Instance.new("ImageLabel", mainFrame)
+shadow.Size = UDim2.new(1, 10, 1, 10)
+shadow.Position = UDim2.new(0, -5, 0, -5)
+shadow.BackgroundTransparency = 1
+shadow.Image = "rbxassetid://1316045217"
+shadow.ScaleType = Enum.ScaleType.Slice
+shadow.SliceCenter = Rect.new(10, 10, 118, 118)
+
+-- زر إخفاء/إظهار القائمة
+local toggleButton = Instance.new("TextButton", screenGui)
+toggleButton.Size = UDim2.new(0, 40, 0, 40)
+toggleButton.Position = UDim2.new(1, -50, 0, 10) -- في الزاوية العلوية اليمنية
+toggleButton.BackgroundColor3 = Color3.new(0.3, 0.3, 0.3)
+toggleButton.Text = "☰"
+toggleButton.TextSize = 20
+toggleButton.TextColor3 = Color3.new(1, 1, 1)
+toggleButton.BorderSizePixel = 0
+local toggleCorner = Instance.new("UICorner", toggleButton)
+toggleCorner.CornerRadius = UDim.new(0, 8)
+
+-- حالة القائمة (ظاهرة أو مخفية)
+local isVisible = true
+
+-- وظيفة إخفاء/إظهار القائمة
+toggleButton.MouseButton1Click:Connect(function()
+    isVisible = not isVisible
+    mainFrame.Visible = isVisible
+    toggleButton.Text = isVisible and "☰" or "☰"
+end)
+
+-- إمكانية تحريك القائمة
+local dragging = false
+local dragStartPos, frameStartPos
+
+mainFrame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStartPos = Vector2.new(input.Position.X, input.Position.Y)
+        frameStartPos = mainFrame.Position
+    end
+end)
+
+mainFrame.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
+    end
+end)
+
+game:GetService("UserInputService").InputChanged:Connect(function(input)
+    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local delta = Vector2.new(input.Position.X, input.Position.Y) - dragStartPos
+        mainFrame.Position = UDim2.new(frameStartPos.X.Scale, frameStartPos.X.Offset + delta.X, frameStartPos.Y.Scale, frameStartPos.Y.Offset + delta.Y)
+    end
+end)
+
+-- إضافة محتوى إلى القائمة (مثال)
+local content = Instance.new("ScrollingFrame", mainFrame)
+content.Size = UDim2.new(1, -10, 1, -50)
+content.Position = UDim2.new(0, 5, 0, 45)
+content.BackgroundTransparency = 1
+content.ScrollBarThickness = 5
+
+local layout = Instance.new("UIListLayout", content)
+layout.Padding = UDim.new(0, 10)
+
+-- إضافة عناصر إلى القائمة (مثال)
+for i = 1, 10 do
+    local button = Instance.new("TextButton", content)
+    button.Size = UDim2.new(1, 0, 0, 40)
+    button.BackgroundColor3 = Color3.new(0.3, 0.3, 0.3)
+    button.Text = "زر " .. i
+    button.TextSize = 18
+    button.TextColor3 = Color3.new(1, 1, 1)
+    button.BorderSizePixel = 0
+    local buttonCorner = Instance.new("UICorner", button)
+    buttonCorner.CornerRadius = UDim.new(0, 8)
+end
+
+-- تنفيذ الوظائف
+monitorObjectsInContainer(workspace)
+monitorAllPlayers()
+showStartNotification()
+
+-- بدء إشعار المطور بشكل دوري
+task.spawn(showDeveloperNotification)
+
+-- بدء تحديث الترجمات بشكل دوري
+task.spawn(refreshTranslations)
